@@ -30,6 +30,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "boost/spirit/home/x3.hpp"
 #include "ccapi_cpp/ccapi_macro.h"
 #include "ccapi_cpp/ccapi_util.h"
 #include "openssl/evp.h"
@@ -1044,6 +1045,11 @@ class Decimal {
     ) {
       this->sign = true;
     }
+
+    double doubleValue;
+    if (boost::spirit::x3::parse(originalValue.begin(), originalValue.end(), boost::spirit::x3::double_, doubleValue)) {
+      cachedToDouble.emplace(doubleValue);
+    }
   }
 
   std::string toString() const {
@@ -1069,27 +1075,7 @@ class Decimal {
     return *this->cachedToDouble;
   }
 
-  friend bool operator<(const Decimal& l, const Decimal& r) {
-    if (l.sign && r.sign) {
-      if (l.before < r.before) {
-        return true;
-      } else if (l.before > r.before) {
-        return false;
-      } else {
-        return l.frac < r.frac;
-      }
-    } else if (l.sign && !r.sign) {
-      return false;
-    } else if (!l.sign && r.sign) {
-      return true;
-    } else {
-      Decimal nl = l;
-      nl.sign = true;
-      Decimal nr = r;
-      nr.sign = true;
-      return nl > nr;
-    }
-  }
+  friend bool operator<(const Decimal& l, const Decimal& r) { return l.toDouble() < r.toDouble(); }
 
   friend bool operator>(const Decimal& l, const Decimal& r) { return r < l; }
 
