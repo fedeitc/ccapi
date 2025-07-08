@@ -283,8 +283,7 @@ class UtilString {
   static std::string normalizeDecimalString(const std::string& original) {
     if (original.find('.') != std::string::npos && original.find_first_of("Ee") == std::string::npos) {
       std::string str(original);
-      rtrimInPlace(str, "0");
-      rtrimInPlace(str, ".");
+      str.erase(str.find_last_not_of('.', str.find_last_not_of('0')) + 1);
       return str;
     } else {
       return original;
