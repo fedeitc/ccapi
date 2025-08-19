@@ -1094,6 +1094,9 @@ class Service : public std::enable_shared_from_this<Service> {
         CCAPI_LOGGER_TRACE("timeout, connection closed");
       }
       CCAPI_LOGGER_TRACE("fail");
+      if (wsConnectionPtr->status == WsConnection::Status::CLOSING) {
+        return;
+      }
       Event event;
       event.setType(Event::Type::SESSION_STATUS);
       Message message;
@@ -1336,6 +1339,8 @@ class Service : public std::enable_shared_from_this<Service> {
     event.setMessageList({message});
     this->eventHandler(event, nullptr);
     CCAPI_LOGGER_INFO("connection " + toString(*wsConnectionPtr) + " is closed");
+    wsConnectionPtr->remoteCloseCode = {};
+    wsConnectionPtr->remoteCloseReason = {};
     this->clearStates(wsConnectionPtr);
     auto thisWsConnectionPtr = this->createWsConnectionPtr(wsConnectionPtr);
     this->wsConnectionPtrByIdMap.erase(wsConnectionPtr->id);
@@ -1402,7 +1407,6 @@ class Service : public std::enable_shared_from_this<Service> {
     } else if (kind == boost::beast::websocket::frame_type::pong) {
       this->onPong(wsConnectionPtr, payload);
     } else if (kind == boost::beast::websocket::frame_type::close) {
-      this->onClose(wsConnectionPtr, ErrorCode());
     }
   }
 
