@@ -297,20 +297,8 @@ class MarketDataService : public Service {
                                ", timeReceived = " + UtilTime::getISOTimestamp(timeReceived) + ", exchangeSubscriptionId = " + exchangeSubscriptionId +
                                ", reason = " + reason;
     CCAPI_LOGGER_ERROR(errorMessage);
-    ErrorCode ec;
     this->close(wsConnectionPtr, beast::websocket::close_code::normal,
-                beast::websocket::close_reason(beast::websocket::close_code::normal, "incorrect states found: " + reason), ec);
-    if (ec) {
-      std::string& channelId =
-          this->channelIdSymbolIdByConnectionIdExchangeSubscriptionIdMap.at(wsConnectionPtr->id).at(exchangeSubscriptionId).at(CCAPI_CHANNEL_ID);
-      std::string& symbolId =
-          this->channelIdSymbolIdByConnectionIdExchangeSubscriptionIdMap.at(wsConnectionPtr->id).at(exchangeSubscriptionId).at(CCAPI_SYMBOL_ID);
-      CCAPI_LOGGER_TRACE("channelId = " + toString(channelId));
-      CCAPI_LOGGER_TRACE("symbolId = " + toString(symbolId));
-      auto& correlationIdList = this->correlationIdListByConnectionIdChannelIdSymbolIdMap.at(wsConnectionPtr->id).at(channelId).at(symbolId);
-      CCAPI_LOGGER_TRACE("correlationIdList = " + toString(correlationIdList));
-      this->onError(Event::Type::SUBSCRIPTION_STATUS, Message::Type::INCORRECT_STATE_FOUND, "shutdown", correlationIdList);
-    }
+                beast::websocket::close_reason(beast::websocket::close_code::normal, "incorrect states found: " + reason));
     this->shouldProcessRemainingMessageOnClosingByConnectionIdMap[wsConnectionPtr->id] = false;
     this->onError(Event::Type::SUBSCRIPTION_STATUS, Message::Type::INCORRECT_STATE_FOUND, errorMessage);
   }

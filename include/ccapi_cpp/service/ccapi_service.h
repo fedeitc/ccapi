@@ -150,10 +150,7 @@ class Service : public std::enable_shared_from_this<Service> {
     for (const auto& x : this->wsConnectionPtrByIdMap) {
       ErrorCode ec;
       auto wsConnectionPtr = x.second;
-      this->close(wsConnectionPtr, beast::websocket::close_code::normal, beast::websocket::close_reason("force close"), ec);
-      if (ec) {
-        this->onError(Event::Type::SUBSCRIPTION_STATUS, Message::Type::GENERIC_ERROR, ec, "shutdown");
-      }
+      this->close(wsConnectionPtr, beast::websocket::close_code::normal, beast::websocket::close_reason("force close"));
     }
   }
 
@@ -164,12 +161,8 @@ class Service : public std::enable_shared_from_this<Service> {
     sendRequestDelayTimerByCorrelationIdMap.clear();
     this->shouldContinue = false;
     for (const auto& x : this->wsConnectionPtrByIdMap) {
-      ErrorCode ec;
       auto wsConnectionPtr = x.second;
-      this->close(wsConnectionPtr, beast::websocket::close_code::normal, beast::websocket::close_reason("stop"), ec);
-      if (ec) {
-        this->onError(Event::Type::SUBSCRIPTION_STATUS, Message::Type::GENERIC_ERROR, ec, "shutdown");
-      }
+      this->close(wsConnectionPtr, beast::websocket::close_code::normal, beast::websocket::close_reason("stop"));
       this->shouldProcessRemainingMessageOnClosingByConnectionIdMap[wsConnectionPtr->id] = false;
     }
   }
@@ -952,7 +945,7 @@ class Service : public std::enable_shared_from_this<Service> {
     return http::string_to_verb(methodStringUpper);
   }
 
-  void close(std::shared_ptr<WsConnection> wsConnectionPtr, beast::websocket::close_code const code, beast::websocket::close_reason reason, ErrorCode& ec) {
+  void close(std::shared_ptr<WsConnection> wsConnectionPtr, beast::websocket::close_code const code, beast::websocket::close_reason reason) {
     if (wsConnectionPtr->status == WsConnection::Status::CLOSING) {
       CCAPI_LOGGER_WARN("websocket connection is already in the state of closing");
       return;
@@ -1500,12 +1493,8 @@ class Service : public std::enable_shared_from_this<Service> {
                                                                                 that->lastPongTpByMethodByConnectionIdMap.at(wsConnectionPtr->id).at(method))
                                   .count() >= pongTimeoutMilliseconds) {
                         auto thisWsConnectionPtr = wsConnectionPtr;
-                        ErrorCode ec;
                         that->close(thisWsConnectionPtr, beast::websocket::close_code::normal,
-                                    beast::websocket::close_reason(beast::websocket::close_code::normal, "pong timeout"), ec);
-                        if (ec) {
-                          that->onError(Event::Type::SUBSCRIPTION_STATUS, Message::Type::GENERIC_ERROR, ec, "shutdown");
-                        }
+                                    beast::websocket::close_reason(beast::websocket::close_code::normal, "pong timeout"));
                         that->shouldProcessRemainingMessageOnClosingByConnectionIdMap[thisWsConnectionPtr->id] = true;
                       } else {
                         auto thisWsConnectionPtr = wsConnectionPtr;
