@@ -62,7 +62,7 @@ class MarketDataService : public Service {
       for (auto& x : this->groupSubscriptionListByInstrumentGroup(subscriptionList)) {
         auto instrumentGroup = x.first;
         auto subscriptionListGivenInstrumentGroup = x.second;
-        boost::asio::post(*this->serviceContextPtr->ioContextPtr, [that = shared_from_base<MarketDataService>(), instrumentGroup,
+        boost::asio::post(*this->strandPtr, [that = shared_from_base<MarketDataService>(), instrumentGroup,
                                                                    subscriptionListGivenInstrumentGroup]() mutable {
           auto now = UtilTime::now();
           for (auto& subscription : subscriptionListGivenInstrumentGroup) {
@@ -1219,7 +1219,7 @@ class MarketDataService : public Service {
       }
       if (waitMilliseconds > 0) {
         TimerPtr timerPtr(new boost::asio::steady_timer(*this->serviceContextPtr->ioContextPtr, std::chrono::milliseconds(waitMilliseconds)));
-        timerPtr->async_wait([wsConnectionPtr, channelId, symbolId, field, optionMap, correlationIdList, previousConflateTp, interval, gracePeriod,
+        timerPtr->async_wait(boost::asio::bind_executor(*this->strandPtr, [wsConnectionPtr, channelId, symbolId, field, optionMap, correlationIdList, previousConflateTp, interval, gracePeriod,
                               this](ErrorCode const& ec) {
           if (this->wsConnectionPtrByIdMap.find(wsConnectionPtr->id) != this->wsConnectionPtrByIdMap.end()) {
             if (ec && ec != boost::asio::error::operation_aborted) {
@@ -1271,7 +1271,7 @@ class MarketDataService : public Service {
               }
             }
           }
-        });
+        }));
         this->conflateTimerMapByConnectionIdChannelIdSymbolIdMap[wsConnectionPtr->id][channelId][symbolId] = timerPtr;
       }
     }
@@ -1446,13 +1446,13 @@ class MarketDataService : public Service {
         int delayMilliseconds = std::stoi(optionMap.at(CCAPI_FETCH_MARKET_DEPTH_INITIAL_SNAPSHOT_DELAY_MILLISECONDS));
         if (delayMilliseconds > 0) {
           TimerPtr timerPtr(new boost::asio::steady_timer(*this->serviceContextPtr->ioContextPtr, std::chrono::milliseconds(delayMilliseconds)));
-          timerPtr->async_wait([wsConnectionPtr, exchangeSubscriptionId, delayMilliseconds, that = this](ErrorCode const& ec) {
+          timerPtr->async_wait(boost::asio::bind_executor(*this->strandPtr, [wsConnectionPtr, exchangeSubscriptionId, delayMilliseconds, that = this](ErrorCode const& ec) {
             if (ec) {
               that->onError(Event::Type::SUBSCRIPTION_STATUS, Message::Type::GENERIC_ERROR, ec, "timer");
             } else {
               that->buildOrderBookInitial(wsConnectionPtr, exchangeSubscriptionId, delayMilliseconds);
             }
-          });
+          }));
           this->fetchMarketDepthInitialSnapshotTimerByConnectionIdExchangeSubscriptionIdMap[wsConnectionPtr->id][exchangeSubscriptionId] = timerPtr;
         } else {
           this->buildOrderBookInitial(wsConnectionPtr, exchangeSubscriptionId, delayMilliseconds);
@@ -1467,13 +1467,13 @@ class MarketDataService : public Service {
     auto thisDelayMilliseconds = delayMilliseconds * 2;
     if (thisDelayMilliseconds > 0) {
       TimerPtr timerPtr(new boost::asio::steady_timer(*this->serviceContextPtr->ioContextPtr, std::chrono::milliseconds(thisDelayMilliseconds)));
-      timerPtr->async_wait([wsConnectionPtr, exchangeSubscriptionId, thisDelayMilliseconds, that = this](ErrorCode const& ec) {
+      timerPtr->async_wait(boost::asio::bind_executor(*this->strandPtr, [wsConnectionPtr, exchangeSubscriptionId, thisDelayMilliseconds, that = this](ErrorCode const& ec) {
         if (ec) {
           that->onError(Event::Type::SUBSCRIPTION_STATUS, Message::Type::GENERIC_ERROR, ec, "timer");
         } else {
           that->buildOrderBookInitial(wsConnectionPtr, exchangeSubscriptionId, thisDelayMilliseconds);
         }
-      });
+      }));
       this->fetchMarketDepthInitialSnapshotTimerByConnectionIdExchangeSubscriptionIdMap[wsConnectionPtr->id][exchangeSubscriptionId] = timerPtr;
     } else {
       this->buildOrderBookInitial(wsConnectionPtr, exchangeSubscriptionId, thisDelayMilliseconds);

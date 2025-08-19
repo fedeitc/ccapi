@@ -74,6 +74,8 @@ namespace ccapi {
 class Service : public std::enable_shared_from_this<Service> {
  public:
   typedef ServiceContext* ServiceContextPtr;
+  typedef boost::asio::strand<boost::asio::io_context::executor_type> Strand;
+  typedef Strand* StrandPtr;
 
   typedef boost::system::error_code ErrorCode;  // a.k.a. beast::error_code
 
@@ -110,6 +112,7 @@ class Service : public std::enable_shared_from_this<Service> {
         resolver(*serviceContextPtr->ioContextPtr),
         resolverWs(*serviceContextPtr->ioContextPtr),
         jsonDocumentAllocator(jsonParseBuffer.data(), jsonParseBuffer.size()) {
+    this->strandPtr = new Strand(boost::asio::make_strand(*this->serviceContextPtr->ioContextPtr));
     this->enableCheckPingPongWebsocketProtocolLevel = this->sessionOptions.enableCheckPingPongWebsocketProtocolLevel;
     this->enableCheckPingPongWebsocketApplicationLevel = this->sessionOptions.enableCheckPingPongWebsocketApplicationLevel;
     // this->pingIntervalMillisecondsByMethodMap[PingPongMethod::WEBSOCKET_PROTOCOL_LEVEL] = sessionOptions.pingWebsocketProtocolLevelIntervalMilliseconds;
@@ -134,6 +137,7 @@ class Service : public std::enable_shared_from_this<Service> {
     for (const auto& x : this->connectRetryOnFailTimerByConnectionIdMap) {
       x.second->cancel();
     }
+    delete this->strandPtr;
   }
 
   void purgeHttpConnectionPool() { this->httpConnectionPool.clear(); }
@@ -956,7 +960,7 @@ class Service : public std::enable_shared_from_this<Service> {
     wsConnectionPtr->status = WsConnection::Status::CLOSING;
     wsConnectionPtr->remoteCloseCode = code;
     wsConnectionPtr->remoteCloseReason = reason;
-    wsConnectionPtr->streamPtr->async_close(code, beast::bind_front_handler(&Service::onClose, shared_from_this(), wsConnectionPtr));
+    wsConnectionPtr->streamPtr->async_close(code, boost::asio::bind_executor(*this->strandPtr, beast::bind_front_handler(&Service::onClose, shared_from_this(), wsConnectionPtr)));
   }
 
   virtual void prepareConnect(std::shared_ptr<WsConnection> wsConnectionPtr) { this->connect(wsConnectionPtr); }
@@ -977,7 +981,7 @@ class Service : public std::enable_shared_from_this<Service> {
     CCAPI_LOGGER_TRACE("wsConnectionPtr->host = " + wsConnectionPtr->host);
     CCAPI_LOGGER_TRACE("wsConnectionPtr->port = " + wsConnectionPtr->port);
     newResolverPtr->async_resolve(wsConnectionPtr->host, wsConnectionPtr->port,
-                                  beast::bind_front_handler(&Service::onResolveWs, shared_from_this(), wsConnectionPtr, newResolverPtr));
+                                  boost::asio::bind_executor(*this->strandPtr, beast::bind_front_handler(&Service::onResolveWs, shared_from_this(), wsConnectionPtr, newResolverPtr)));
   }
 
   void onResolveWs(std::shared_ptr<WsConnection> wsConnectionPtr, std::shared_ptr<tcp::resolver> newResolverPtr, beast::error_code ec,
@@ -1004,7 +1008,7 @@ class Service : public std::enable_shared_from_this<Service> {
       return;
     }
     CCAPI_LOGGER_TRACE("before async_connect");
-    beast::get_lowest_layer(stream).async_connect(tcpResolverResults, beast::bind_front_handler(&Service::onConnectWs, shared_from_this(), wsConnectionPtr));
+    beast::get_lowest_layer(stream).async_connect(tcpResolverResults, boost::asio::bind_executor(*this->strandPtr, beast::bind_front_handler(&Service::onConnectWs, shared_from_this(), wsConnectionPtr)));
     CCAPI_LOGGER_TRACE("after async_connect");
   }
 
@@ -1023,7 +1027,7 @@ class Service : public std::enable_shared_from_this<Service> {
     beast::websocket::stream<beast::ssl_stream<beast::tcp_stream>>& stream = *wsConnectionPtr->streamPtr;
     beast::get_lowest_layer(stream).socket().set_option(tcp::no_delay(true));
     CCAPI_LOGGER_TRACE("before ssl async_handshake");
-    stream.next_layer().async_handshake(ssl::stream_base::client, beast::bind_front_handler(&Service::onSslHandshakeWs, shared_from_this(), wsConnectionPtr));
+    stream.next_layer().async_handshake(ssl::stream_base::client, boost::asio::bind_executor(*this->strandPtr, beast::bind_front_handler(&Service::onSslHandshakeWs, shared_from_this(), wsConnectionPtr)));
     CCAPI_LOGGER_TRACE("after ssl async_handshake");
   }
 
@@ -1049,7 +1053,7 @@ class Service : public std::enable_shared_from_this<Service> {
     }));
     CCAPI_LOGGER_TRACE("before ws async_handshake");
     stream.async_handshake(wsConnectionPtr->hostHttpHeaderValue, wsConnectionPtr->path,
-                           beast::bind_front_handler(&Service::onWsHandshakeWs, shared_from_this(), wsConnectionPtr));
+                           boost::asio::bind_executor(*this->strandPtr, beast::bind_front_handler(&Service::onWsHandshakeWs, shared_from_this(), wsConnectionPtr)));
     CCAPI_LOGGER_TRACE("after ws async_handshake");
   }
 
@@ -1075,7 +1079,7 @@ class Service : public std::enable_shared_from_this<Service> {
     auto& stream = *wsConnectionPtr->streamPtr;
     CCAPI_LOGGER_TRACE("before async_read");
     auto& readMessageBuffer = wsConnectionPtr->readMessageBuffer;
-    stream.async_read(readMessageBuffer, beast::bind_front_handler(&Service::onReadWs, shared_from_this(), wsConnectionPtr));
+    stream.async_read(readMessageBuffer, boost::asio::bind_executor(*this->strandPtr, beast::bind_front_handler(&Service::onReadWs, shared_from_this(), wsConnectionPtr)));
     CCAPI_LOGGER_TRACE("after async_read");
   }
 
@@ -1180,7 +1184,7 @@ class Service : public std::enable_shared_from_this<Service> {
     CCAPI_LOGGER_TRACE("before async_write");
     CCAPI_LOGGER_TRACE("numBytesToWrite = " + toString(numBytesToWrite));
     stream.binary(false);
-    stream.async_write(net::buffer(data, numBytesToWrite), beast::bind_front_handler(&Service::onWriteWs, shared_from_this(), wsConnectionPtr));
+    stream.async_write(net::buffer(data, numBytesToWrite), boost::asio::bind_executor(*this->strandPtr, beast::bind_front_handler(&Service::onWriteWs, shared_from_this(), wsConnectionPtr)));
     CCAPI_LOGGER_TRACE("after async_write");
   }
 
@@ -1236,7 +1240,7 @@ class Service : public std::enable_shared_from_this<Service> {
       this->connectRetryOnFailTimerByConnectionIdMap.at(wsConnectionId)->cancel();
     }
     TimerPtr timerPtr(new net::steady_timer(*this->serviceContextPtr->ioContextPtr, std::chrono::milliseconds(seconds * 1000)));
-    timerPtr->async_wait([wsConnectionPtr, that = shared_from_this(), urlBase](ErrorCode const& ec) {
+    timerPtr->async_wait(boost::asio::bind_executor(*this->strandPtr, [wsConnectionPtr, that = shared_from_this(), urlBase](ErrorCode const& ec) {
       WsConnection& thisWsConnection = *wsConnectionPtr;
       if (that->wsConnectionPtrByIdMap.find(thisWsConnection.id) == that->wsConnectionPtrByIdMap.end()) {
         if (ec && ec != boost::asio::error::operation_aborted) {
@@ -1255,7 +1259,7 @@ class Service : public std::enable_shared_from_this<Service> {
           }
         }
       }
-    });
+    }));
     this->connectRetryOnFailTimerByConnectionIdMap[wsConnectionId] = timerPtr;
   }
 
@@ -1431,7 +1435,7 @@ class Service : public std::enable_shared_from_this<Service> {
     if (!this->wsConnectionPendingPingingByConnectionIdMap[wsConnectionPtr->id]) {
       auto& stream = *wsConnectionPtr->streamPtr;
       stream.async_ping(
-          "", [that = this, wsConnectionPtr](ErrorCode const& ec) { that->wsConnectionPendingPingingByConnectionIdMap[wsConnectionPtr->id] = false; });
+          "", boost::asio::bind_executor(*this->strandPtr, [that = this, wsConnectionPtr](ErrorCode const& ec) { that->wsConnectionPendingPingingByConnectionIdMap[wsConnectionPtr->id] = false; }));
       this->wsConnectionPendingPingingByConnectionIdMap[wsConnectionPtr->id] = true;
     }
   }
@@ -1456,7 +1460,7 @@ class Service : public std::enable_shared_from_this<Service> {
       }
       auto timerPtr = std::make_shared<net::steady_timer>(*this->serviceContextPtr->ioContextPtr,
                                                           std::chrono::milliseconds(pingIntervalMilliseconds - pongTimeoutMilliseconds));
-      timerPtr->async_wait([wsConnectionPtr, that = shared_from_this(), pingMethod, pongTimeoutMilliseconds, method](ErrorCode const& ec) {
+      timerPtr->async_wait(boost::asio::bind_executor(*this->strandPtr, [wsConnectionPtr, that = shared_from_this(), pingMethod, pongTimeoutMilliseconds, method](ErrorCode const& ec) {
         if (that->wsConnectionPtrByIdMap.find(wsConnectionPtr->id) != that->wsConnectionPtrByIdMap.end()) {
           if (ec && ec != boost::asio::error::operation_aborted) {
             CCAPI_LOGGER_ERROR("wsConnection = " + toString(*wsConnectionPtr) + ", ping timer error: " + ec.message());
@@ -1477,7 +1481,7 @@ class Service : public std::enable_shared_from_this<Service> {
                 that->pongTimeOutTimerByMethodByConnectionIdMap.at(wsConnectionPtr->id).at(method)->cancel();
               }
               auto timerPtr = std::make_shared<net::steady_timer>(*that->serviceContextPtr->ioContextPtr, std::chrono::milliseconds(pongTimeoutMilliseconds));
-              timerPtr->async_wait([wsConnectionPtr, that, pingMethod, pongTimeoutMilliseconds, method](ErrorCode const& ec) {
+              timerPtr->async_wait(boost::asio::bind_executor(*that->strandPtr, [wsConnectionPtr, that, pingMethod, pongTimeoutMilliseconds, method](ErrorCode const& ec) {
                 if (that->wsConnectionPtrByIdMap.find(wsConnectionPtr->id) != that->wsConnectionPtrByIdMap.end()) {
                   if (ec && ec != boost::asio::error::operation_aborted) {
                     CCAPI_LOGGER_ERROR("wsConnection = " + toString(*wsConnectionPtr) + ", pong time out timer error: " + ec.message());
@@ -1506,12 +1510,12 @@ class Service : public std::enable_shared_from_this<Service> {
                     }
                   }
                 }
-              });
+              }));
               that->pongTimeOutTimerByMethodByConnectionIdMap[wsConnectionPtr->id][method] = timerPtr;
             }
           }
         }
-      });
+      }));
       this->pingTimerByMethodByConnectionIdMap[wsConnectionPtr->id][method] = timerPtr;
     }
     CCAPI_LOGGER_FUNCTION_EXIT;
@@ -1540,6 +1544,7 @@ class Service : public std::enable_shared_from_this<Service> {
   SessionOptions sessionOptions;
   SessionConfigs sessionConfigs;
   ServiceContextPtr serviceContextPtr;
+  StrandPtr strandPtr;
   tcp::resolver resolver, resolverWs;
   std::string hostRest;
   std::string portRest;

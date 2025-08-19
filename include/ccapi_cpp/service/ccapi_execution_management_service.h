@@ -53,7 +53,7 @@ class ExecutionManagementService : public Service {
     CCAPI_LOGGER_DEBUG("this->baseUrlWs = " + this->baseUrlWs);
     if (this->shouldContinue.load()) {
       for (auto& subscription : subscriptionList) {
-        boost::asio::post(*this->serviceContextPtr->ioContextPtr, [that = shared_from_base<ExecutionManagementService>(), subscription]() mutable {
+        boost::asio::post(*this->strandPtr, [that = shared_from_base<ExecutionManagementService>(), subscription]() mutable {
           auto now = UtilTime::now();
           subscription.setTimeSent(now);
           auto credential = subscription.getCredential();
@@ -295,7 +295,7 @@ class ExecutionManagementService : public Service {
   void sendRequestByWebsocket(const std::string& websocketOrderEntrySubscriptionCorrelationId, Request& request, const TimePoint& now) override {
     CCAPI_LOGGER_FUNCTION_ENTER;
     CCAPI_LOGGER_TRACE("now = " + toString(now));
-    boost::asio::post(*this->serviceContextPtr->ioContextPtr,
+    boost::asio::post(*this->strandPtr,
                       [that = shared_from_base<ExecutionManagementService>(), websocketOrderEntrySubscriptionCorrelationId, request]() mutable {
                         auto now = UtilTime::now();
                         CCAPI_LOGGER_DEBUG("websocketOrderEntrySubscriptionCorrelationId = " + toString(websocketOrderEntrySubscriptionCorrelationId));

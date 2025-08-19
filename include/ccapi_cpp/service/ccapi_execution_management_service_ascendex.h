@@ -354,7 +354,7 @@ class ExecutionManagementServiceAscendex : public ExecutionManagementService {
   void subscribe(std::vector<Subscription>& subscriptionList) override {
     if (this->shouldContinue.load()) {
       for (auto& subscription : subscriptionList) {
-        boost::asio::post(*this->serviceContextPtr->ioContextPtr, [that = shared_from_base<ExecutionManagementServiceAscendex>(), subscription]() mutable {
+        boost::asio::post(*this->strandPtr, [that = shared_from_base<ExecutionManagementServiceAscendex>(), subscription]() mutable {
           auto now = UtilTime::now();
           subscription.setTimeSent(now);
           auto credential = subscription.getCredential();

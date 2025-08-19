@@ -276,7 +276,7 @@ class ExecutionManagementServiceMexc : public ExecutionManagementService {
   void setPingListenKeyTimer(std::shared_ptr<WsConnection> wsConnectionPtr) {
     TimerPtr timerPtr(
         new boost::asio::steady_timer(*this->serviceContextPtr->ioContextPtr, std::chrono::milliseconds(this->pingListenKeyIntervalSeconds * 1000)));
-    timerPtr->async_wait([wsConnectionPtr, that = shared_from_base<ExecutionManagementServiceMexc>()](ErrorCode const& ec) {
+    timerPtr->async_wait(boost::asio::bind_executor(*this->strandPtr, [wsConnectionPtr, that = shared_from_base<ExecutionManagementServiceMexc>()](ErrorCode const& ec) {
       if (ec) {
         return;
       }
@@ -312,7 +312,7 @@ class ExecutionManagementServiceMexc : public ExecutionManagementService {
             CCAPI_LOGGER_DEBUG("ping listen key success");
           },
           that->sessionOptions.httpRequestTimeoutMilliseconds);
-    });
+    }));
     this->pingListenKeyTimerMapByConnectionIdMap[wsConnectionPtr->id] = timerPtr;
   }
 

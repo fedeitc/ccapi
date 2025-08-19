@@ -83,7 +83,7 @@ class ExecutionManagementServiceGateioPerpetualFutures : public ExecutionManagem
     if (this->shouldContinue.load()) {
       for (auto& subscription : subscriptionList) {
         boost::asio::post(
-            *this->serviceContextPtr->ioContextPtr, [that = shared_from_base<ExecutionManagementServiceGateioPerpetualFutures>(), subscription]() mutable {
+            *this->strandPtr, [that = shared_from_base<ExecutionManagementServiceGateioPerpetualFutures>(), subscription]() mutable {
               auto now = UtilTime::now();
               subscription.setTimeSent(now);
               const auto& instrumentSet = subscription.getInstrumentSet();
