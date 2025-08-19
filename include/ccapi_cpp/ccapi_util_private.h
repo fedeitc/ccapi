@@ -300,10 +300,10 @@ class UtilString {
   //     return str;
   //   }
 
-  static std::string_view normalizeDecimalStringView(std::string_view input) {
+  static std::string normalizeDecimalStringView(std::string_view input) {
     // Quick check for dot
     size_t dotPos = input.find('.');
-    if (dotPos == std::string_view::npos || input.find_first_of("Ee") != std::string::npos) return input;
+    if (dotPos == std::string_view::npos || input.find_first_of("Ee") != std::string::npos) return std::string(input);
 
     size_t end = input.size();
 
@@ -317,7 +317,7 @@ class UtilString {
       --end;
     }
 
-    return input.substr(0, end);
+    return std::string(input.substr(0, end));
   }
 
   static std::string leftPadTo(const std::string& str, const size_t padToLength, const char paddingChar) {

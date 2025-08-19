@@ -134,7 +134,7 @@ class MarketDataMessage {
     return output;
   }
 
-  typedef std::map<DataFieldType, std::string_view> TypeForDataPoint;
+  typedef std::map<DataFieldType, std::string> TypeForDataPoint;
   typedef std::map<DataType, std::vector<TypeForDataPoint>> TypeForData;
 
   typedef std::map<DataFieldType, std::string> TypeForOwingDataPoint;
