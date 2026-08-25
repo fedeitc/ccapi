@@ -1151,6 +1151,7 @@ class Service : public std::enable_shared_from_this<Service> {
     auto& connectionId = wsConnectionPtr->id;
     auto& readMessageBuffer = wsConnectionPtr->readMessageBuffer;
     if (ec) {
+      CCAPI_LOGGER_INFO(std::string("onReadWs error: ") + ec.category().name() + ", " + std::to_string(ec.value()) + ": " + ec.message());
       readMessageBuffer.consume(readMessageBuffer.size());
       if (ec == boost::asio::error::operation_aborted) {
         return;
@@ -1408,12 +1409,51 @@ class Service : public std::enable_shared_from_this<Service> {
     this->eventHandler(event, nullptr);
     CCAPI_LOGGER_INFO("connection " + toString(*wsConnectionPtr) + " is closed");
     this->clearStates(wsConnectionPtr);
-    this->setWsConnectionStream(wsConnectionPtr);
     this->wsConnectionPtrByIdMap.erase(wsConnectionPtr->id);
     if (this->shouldContinue.load()) {
-      this->prepareConnect(wsConnectionPtr);
+      this->scheduleConnect(wsConnectionPtr);
     }
     CCAPI_LOGGER_FUNCTION_EXIT;
+  }
+
+  void scheduleConnect(std::shared_ptr<WsConnection> wsConnectionPtr) {
+    const auto connectionId = wsConnectionPtr->id;
+
+    CCAPI_LOGGER_INFO("scheduling reconnect for connection " + toString(*wsConnectionPtr) + " in 1 second");
+
+    auto timerPtr = std::make_shared<net::steady_timer>(*this->serviceContextPtr->ioContextPtr, std::chrono::seconds(1));
+
+    timerPtr->async_wait([wsConnectionPtr, that = shared_from_this(), connectionId](ErrorCode const& ec) {
+      if (ec) {
+        if (ec != boost::asio::error::operation_aborted) {
+          CCAPI_LOGGER_ERROR("wsConnection = " + toString(*wsConnectionPtr) + ", reconnect timer error: " + ec.message());
+
+          that->onError(Event::Type::SUBSCRIPTION_STATUS, Message::Type::GENERIC_ERROR, ec, "reconnect timer", wsConnectionPtr->correlationIdList);
+        }
+        return;
+      }
+
+      if (!that->shouldContinue.load()) {
+        return;
+      }
+
+      if (that->wsConnectionPtrByIdMap.find(connectionId) != that->wsConnectionPtrByIdMap.end()) {
+        return;
+      }
+
+      CCAPI_LOGGER_INFO("reconnecting connection " + toString(*wsConnectionPtr));
+
+      try {
+        that->setWsConnectionStream(wsConnectionPtr);
+        that->prepareConnect(wsConnectionPtr);
+      } catch (const beast::error_code& ec) {
+        CCAPI_LOGGER_ERROR("reconnect failed: " + ec.message());
+
+        that->onError(Event::Type::SUBSCRIPTION_STATUS, Message::Type::SUBSCRIPTION_FAILURE, ec, "reconnect", wsConnectionPtr->correlationIdList);
+      }
+    });
+
+    this->connectRetryOnFailTimerByConnectionIdMap[connectionId] = timerPtr;
   }
 
   void onMessage(std::shared_ptr<WsConnection> wsConnectionPtr, const char* data, size_t dataSize) {
