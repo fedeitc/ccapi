@@ -1115,8 +1115,8 @@ class Service : public std::enable_shared_from_this<Service> {
     CCAPI_LOGGER_TRACE("ws handshaked");
 
     // Finalize connection setup
-    this->onOpen(wsConnectionPtr);
     this->wsConnectionPtrByIdMap.insert({wsConnectionPtr->id, wsConnectionPtr});
+    this->onOpen(wsConnectionPtr);
     CCAPI_LOGGER_TRACE("about to start read");
 
     // Start reading messages
@@ -1144,6 +1144,11 @@ class Service : public std::enable_shared_from_this<Service> {
     CCAPI_LOGGER_TRACE("after async_read");
   }
 
+  bool isCurrentWsConnection(const std::shared_ptr<WsConnection>& wsConnectionPtr) const {
+    auto it = this->wsConnectionPtrByIdMap.find(wsConnectionPtr->id);
+    return it != this->wsConnectionPtrByIdMap.end() && it->second == wsConnectionPtr;
+  }
+
   void onReadWs(std::shared_ptr<WsConnection> wsConnectionPtr, const ErrorCode& ec, std::size_t n) {
     CCAPI_LOGGER_FUNCTION_ENTER;
     CCAPI_LOGGER_TRACE("n = " + toString(n));
@@ -1159,6 +1164,9 @@ class Service : public std::enable_shared_from_this<Service> {
         CCAPI_LOGGER_TRACE("timeout, connection closed");
       }
       if (wsConnectionPtr->status == WsConnection::Status::CLOSING) {
+        return;
+      }
+      if (!this->isCurrentWsConnection(wsConnectionPtr)) {
         return;
       }
       CCAPI_LOGGER_TRACE("fail");
@@ -1177,7 +1185,8 @@ class Service : public std::enable_shared_from_this<Service> {
       this->onFail(wsConnectionPtr);
       return;
     }
-    if (wsConnectionPtr->status != WsConnection::Status::OPEN) {
+    if (wsConnectionPtr->status != WsConnection::Status::OPEN ||
+        !this->isCurrentWsConnection(wsConnectionPtr)) {
       CCAPI_LOGGER_WARN("should not process remaining message on closing");
       readMessageBuffer.consume(readMessageBuffer.size());
       return;
@@ -1324,8 +1333,9 @@ class Service : public std::enable_shared_from_this<Service> {
         } else {
           CCAPI_LOGGER_INFO("about to retry");
           try {
-            that->setWsConnectionStream(wsConnectionPtr);
-            that->prepareConnect(wsConnectionPtr);
+            auto newWsConnectionPtr = wsConnectionPtr->clone();
+            that->setWsConnectionStream(newWsConnectionPtr);
+            that->prepareConnect(newWsConnectionPtr);
             that->connectNumRetryOnFailByConnectionUrlMap[urlBase] += 1;
           } catch (const beast::error_code& ec) {
             CCAPI_LOGGER_TRACE("fail");
@@ -1444,8 +1454,9 @@ class Service : public std::enable_shared_from_this<Service> {
       CCAPI_LOGGER_INFO("reconnecting connection " + toString(*wsConnectionPtr));
 
       try {
-        that->setWsConnectionStream(wsConnectionPtr);
-        that->prepareConnect(wsConnectionPtr);
+        auto newWsConnectionPtr = wsConnectionPtr->clone();
+        that->setWsConnectionStream(newWsConnectionPtr);
+        that->prepareConnect(newWsConnectionPtr);
       } catch (const beast::error_code& ec) {
         CCAPI_LOGGER_ERROR("reconnect failed: " + ec.message());
 

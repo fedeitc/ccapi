@@ -13,7 +13,6 @@ namespace ccapi {
  */
 class WsConnection {
  public:
-  WsConnection(const WsConnection&) = delete;
   WsConnection& operator=(const WsConnection&) = delete;
 
   WsConnection(const std::string& url, const std::string& group, const std::vector<Subscription>& subscriptionList,
@@ -32,6 +31,27 @@ class WsConnection {
   }
 
   WsConnection() {}
+
+private:
+  WsConnection(const WsConnection&) = default;
+
+  void resetConnectionState() {
+    status = Status::UNKNOWN;
+    streamPtr = {};
+    remoteCloseCode = {};
+    remoteCloseReason = {};
+    readMessageBuffer = {};
+    writeMessageBuffer = {};
+    writeMessageBufferWrittenLength = 0;
+    writeMessageBufferBoundary.clear();
+  }
+
+public:
+  std::shared_ptr<WsConnection> clone() const {
+    auto newWsConnectionPtr = std::shared_ptr<WsConnection>(new WsConnection(*this));
+    newWsConnectionPtr->resetConnectionState();
+    return newWsConnectionPtr;
+  }
 
   std::string toString() const {
     std::map<std::string, std::string> shortCredential;
